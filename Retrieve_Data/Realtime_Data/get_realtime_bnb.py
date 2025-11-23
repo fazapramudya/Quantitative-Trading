@@ -4,72 +4,60 @@ import time
 from datetime import datetime
 import os
 
-# 1. Konfigurasi
-symbol = "BNBUSDT"
-interval = Client.KLINE_INTERVAL_5MINUTE # Gunakan 5 Menit agar update-nya cepat terasa
-csv_file = './Data/historical_bnb.csv'
+# Import Fungsi Cleaning Single Candle
+from Clean_Data.cleaning_data import clean_one_candle
 
-client = Client()
+def start_realtime_tracking(symbol, interval, csv_file):
+    print(f"[REALTIME] Memulai tracker {symbol}...")
+    client = Client()
+    
+    while True:
+        try:
+            # 1. Baca Data Historis Terakhir (Untuk referensi cleaning)
+            if os.path.exists(csv_file):
+                # Baca 50 baris terakhir saja biar cepat
+                df_history = pd.read_csv(csv_file).tail(50)
+                last_saved_time = pd.to_datetime(df_history.iloc[-1]['Open Time'])
+            else:
+                print("Error: File CSV tidak ditemukan.")
+                break
 
-def get_last_timestamp_from_csv(filename):
-    """Membaca waktu terakhir yang tersimpan di CSV agar tidak duplikat"""
-    if not os.path.exists(filename):
-        return 0
-    try:
-        # Baca baris terakhir saja biar cepat
-        df = pd.read_csv(filename)
-        if not df.empty:
-            return df.iloc[-1]['Open Time']
-    except:
-        return 0
-    return 0
-
-print(f"Memulai tracker real-time untuk {symbol}...")
-print("Tekan Ctrl+C untuk berhenti.")
-
-while True:
-    try:
-        # 2. Ambil data candle terbaru (ambil 2 terakhir untuk memastikan candle yang close)
-        klines = client.get_klines(symbol=symbol, interval=interval, limit=2)
-        
-        # Ambil candle yang SUDAH SELESAI (index 0, karena index 1 adalah yang sedang jalan)
-        # Jika Anda ingin data yang 'sedang jalan', ubah index ke [-1] tapi hati-hati duplikat
-        latest_kline = klines[-1] 
-        
-        # Format data agar sesuai dengan struktur CSV sebelumnya
-        # Structure kline: [Open Time, Open, High, Low, Close, Volume, ...]
-        open_time_ms = latest_kline[0]
-        open_time_human = pd.to_datetime(open_time_ms, unit='ms')
-        
-        new_data = {
-            'Open Time': open_time_human,
-            'Open': float(latest_kline[1]),
-            'High': float(latest_kline[2]),
-            'Low': float(latest_kline[3]),
-            'Close': float(latest_kline[4]),
-            'Volume': float(latest_kline[5])
-        }
-        
-        # 3. Cek apakah data ini sudah ada di CSV
-        last_saved_time = pd.to_datetime(get_last_timestamp_from_csv(csv_file))
-        
-        if new_data['Open Time'] > last_saved_time:
-            # Buat DataFrame 1 baris
-            df_new = pd.DataFrame([new_data])
+            # 2. Ambil Data Live dari Binance
+            klines = client.get_klines(symbol=symbol, interval=interval, limit=2)
+            closed_candle = klines[0] # Candle yang baru close (index 0)
             
-            # 4. Append (Tambahkan) ke CSV tanpa menulis ulang Header
-            # mode='a' artinya append (tambah di bawah)
-            # header=False artinya jangan tulis judul kolom lagi
-            df_new.to_csv(csv_file, mode='a', header=False, index=False)
-            
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Data baru ditambahkan: Close Price {new_data['Close']}")
-        else:
-            # Jika waktu sama, berarti candle belum ganti (masih di menit yang sama)
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Menunggu candle baru... Harga saat ini: {new_data['Close']}", end='\r')
-            
-        # Tunggu X detik sebelum request lagi (jangan spam API)
-        time.sleep(5) 
+            candle_time = pd.to_datetime(closed_candle[0], unit='ms')
 
-    except Exception as e:
-        print(f"Error: {e}")
-        time.sleep(5)
+            # 3. Jika ada candle baru (Waktunya > Waktu terakhir di CSV)
+            if candle_time > last_saved_time:
+                # Siapkan Raw Data
+                raw_data = {
+                    'Open Time': candle_time,
+                    'Open': float(closed_candle[1]),
+                    'High': float(closed_candle[2]),
+                    'Low': float(closed_candle[3]),
+                    'Close': float(closed_candle[4]),
+                    'Volume': float(closed_candle[5])
+                }
+                
+                # -------------------------------------------------
+                # 4. PROSES CLEANING REAL-TIME DI SINI
+                # -------------------------------------------------
+                final_data = clean_one_candle(raw_data, df_history)
+                
+                # 5. Append ke CSV
+                df_new = pd.DataFrame([final_data])
+                df_new.to_csv(csv_file, mode='a', header=False, index=False, float_format='%.2f')
+                
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Data Masuk & Cleaned: {final_data['Close']}")
+            
+            else:
+                # Display Loading
+                live_price = float(klines[1][4])
+                print(f"Waiting Close... Live Price: {live_price:.2f}", end='\r')
+
+            time.sleep(2)
+
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(5)

@@ -10,17 +10,17 @@ SYMBOL = "BNBUSDT"
 INTERVAL = Client.KLINE_INTERVAL_5MINUTE
 START_DATE = "21 Nov, 2025"
 
-FILE_PATH = DATA_PATH / 'raw'/'bnbusdt_5m_21-11-2025_to_date.csv'
+FILE_PATH = DATA_PATH / 'raw' / 'bnbusdt_5m_21-11-2025_to_date.csv'
 
 def main():
     # Buat folder Data jika belum ada
-    if not os.path.exists(os.path.dirname(FILE_PATH)):
-        os.makedirs(os.path.dirname(FILE_PATH))
+    if FILE_PATH.parent.exists() == False:
+        FILE_PATH.parent.exists().mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------
     # STEP 1: CEK & AMBIL HISTORICAL DATA
     # ---------------------------------------------------------
-    if not os.path.exists(FILE_PATH):
+    if not FILE_PATH.exists():
         print("--- FASE 1: INISIALISASI DATA ---")
         
         # A. Retrieve

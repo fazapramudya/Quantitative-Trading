@@ -3,9 +3,8 @@ from binance.client import Client
 import time
 from datetime import datetime
 import os
+from data_prep.cleaning.anomaly_cleaner import clean_one_candle
 
-# Import Fungsi Cleaning Single Candle
-from Clean_Data.cleaning_data import clean_one_candle
 
 def start_realtime_tracking(symbol, interval, csv_file):
     print(f"[REALTIME] Memulai tracker {symbol}...")

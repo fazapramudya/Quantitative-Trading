@@ -1,13 +1,8 @@
 
 ```
-quant-T
-├─ .env
-├─ .env.example
+quant-t
 ├─ .python-version
-├─ data
-│  ├─ processed
-│  └─ raw
-│     └─ bnb.csv
+├─ Makefile
 ├─ pyproject.toml
 ├─ README.md
 ├─ src
@@ -54,9 +49,9 @@ quant-T
 │  │  ├─ run_prep.py
 │  │  └─ __init__.py
 │  ├─ storage
-│  │  ├─ db_reader.py
-│  │  ├─ db_writer.py
+│  │  ├─ db_ops.py
 │  │  ├─ supabase_client.py
+│  │  ├─ trade_processor.py
 │  │  └─ __init__.py
 │  └─ utils
 │     ├─ decorators.py

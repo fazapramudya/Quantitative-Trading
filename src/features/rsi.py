@@ -2,34 +2,27 @@
 import pandas as pd
 import numpy as np
 
-def add_rsi_indicator(df, period=14):
+def add_rsi_indicator(df, column_name='Close', period=14):
     """
-    Menghitung RSI Periode 14.
-    Menggunakan metode Wilder's Smoothing (Standar RSI).
+    Menghitung RSI berdasarkan kolom tertentu (default: Close).
+    Mengembalikan DataFrame dengan tambahan kolom 'RSI'.
     """
-    # Copy agar tidak merusak dataframe asli
-    df_result = df.copy()
+    df_res = df.copy()
+    delta = df_res[column_name].diff()
     
-    # 1. Hitung Selisih Harga (Delta)
-    delta = df_result['Close'].diff()
-    
-    # 2. Pisahkan Gain (Naik) dan Loss (Turun)
     gain = (delta.where(delta > 0, 0))
     loss = (-delta.where(delta < 0, 0))
     
-    # 3. Hitung Rata-rata Gain & Loss (Wilder's Smoothing)
-    # alpha=1/period adalah ekuivalen matematis dari metode Wilder
     avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     
-    # 4. Hitung RS dan RSI
     rs = avg_gain / avg_loss
-    df_result['RSI'] = 100 - (100 / (1 + rs))
+    df_res['RSI'] = 100 - (100 / (1 + rs))
     
-    # 5. Rounding 2 desimal
-    df_result['RSI'] = df_result['RSI'].round(2)
+    # Rounding
+    df_res['RSI'] = df_res['RSI'].round(2)
     
-    return df_result
+    return df_res
 
 def check_rsi_signal(rsi_value):
     """

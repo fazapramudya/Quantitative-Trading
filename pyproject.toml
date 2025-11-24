@@ -6,6 +6,23 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pandas>=2.3.3",
+    "pytest>=9.0.1",
+    "pytest-mock>=3.15.1",
     "python-binance>=1.0.32",
     "python-dotenv>=1.2.1",
+    "supabase>=2.24.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+pythonpath = ["src"]
+
+#    -v: Verbose (shows test names)
+#    -ra: Show extra test summary info for (r)easons of (a)ll except passed
+addopts = "-v -ra"
+
+markers = [
+    "integration: marks tests as slow integration tests",
+    "unit: marks tests as fast unit tests",
 ]

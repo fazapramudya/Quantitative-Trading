@@ -18,9 +18,10 @@ PATH_RAW = DATA_PATH / 'raw' / 'raw_bnbusdt_1m_21-11-2025_to_date.csv'
 PATH_CLEAN = DATA_PATH / 'clean' / 'clean_bnbusdt_1m_21-11-2025_to_date.csv'
 PATH_LOG = DATA_PATH / 'log' / 'log_bnbusdt_1m_21-11-2025_to_date.csv'
 
-def process_and_save_rsi(df, filepath):
+def process_and_save_rsi(df: pd.DataFrame, filepath):
     df_rsi = add_rsi_indicator(df, column_name='Close', period=14)
     df_rsi.to_csv(filepath, index=False, float_format='%.2f')
+
 
 def main():
     if not os.path.exists(os.path.dirname(PATH_RAW)):

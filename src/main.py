@@ -12,8 +12,8 @@ from features.ema import add_ema_indicator
 
 # --- KONFIGURASI ---
 SYMBOL = "BNBUSDT"
-INTERVAL = Client.KLINE_INTERVAL_1MINUTE
-START_DATE = "21 Nov, 2025"
+INTERVAL = Client.KLINE_INTERVAL_5MINUTE
+START_DATE = "1 Jan, 2026"
 
 PATH_RAW = DATA_PATH / 'raw' / 'raw_bnbusdt_1m_21-11-2025_to_date.csv'
 PATH_CLEAN = DATA_PATH / 'clean' / 'clean_bnbusdt_1m_21-11-2025_to_date.csv'

@@ -9,15 +9,23 @@ from data_prep.historical.fetch_binance import fetch_historical_data
 from data_prep.realtime.stream_binance import start_realtime_tracking
 from features.rsi import add_rsi_indicator, check_rsi_signal 
 from features.ema import add_ema_indicator
+from models.kmeans import init_kmeans, update_streaming_plot
 
 # --- KONFIGURASI ---
 SYMBOL = "BNBUSDT"
-INTERVAL = Client.KLINE_INTERVAL_5MINUTE
-START_DATE = "1 Jan, 2026"
+INTERVAL = Client.KLINE_INTERVAL_1MINUTE
+START_DATE = "5 Jan, 2026"
 
 PATH_RAW = DATA_PATH / 'raw' / 'raw_bnbusdt_1m_21-11-2025_to_date.csv'
 PATH_CLEAN = DATA_PATH / 'clean' / 'clean_bnbusdt_1m_21-11-2025_to_date.csv'
 PATH_LOG = DATA_PATH / 'log' / 'log_bnbusdt_1m_21-11-2025_to_date.csv'
+
+def calculate_indicators_only(df):
+    """Fungsi helper untuk hitung indikator tanpa simpan ke CSV"""
+    df_final = add_rsi_indicator(df, column_name='Close', period=14)
+    df_final = add_ema_indicator(df_final, column_name='Close', period=50)
+    df_final = add_ema_indicator(df_final, column_name='Close', period=200)
+    return df_final
 
 def apply_indicators_and_save(df, filepath, mode='w', header=True):
     """
@@ -74,70 +82,106 @@ def main():
     else:
         print("Database ditemukan. Melanjutkan ke Real-time.")
 
+    kmeans_dir = os.path.join("data", "k-means")
+    if not os.path.exists(kmeans_dir):
+        os.makedirs(kmeans_dir)
+
+    print("--- [K-MEANS] Training Initial Model ---")
+    df_init = pd.read_csv(PATH_CLEAN)
+    km_model, km_scaler, km_features = init_kmeans(df_init)
+
+    # TAMBAHKAN: Gambar pertama kali saat inisialisasi (agar tidak nunggu 5 menit)
+    print("--- Generating Initial Plot ---")
+    df_init_feat = calculate_indicators_only(df_init)
+    update_streaming_plot(df_init_feat.tail(1000), km_model, km_scaler, km_features, 
+                          save_path=os.path.join(kmeans_dir, "live_regime_plot.png"))
+
     # ==========================================
-    # FASE 2: REAL-TIME (PARALEL)
+    # FASE 2: REAL-TIME
     # ==========================================
-    print(f"\n--- [FASE 2] Real-Time Tracker (RSI + EMA 50/200) ---")
+    print(f"\n--- [FASE 2] Real-Time Tracker ---")
     client = Client()
     
+    # Inisialisasi variabel di luar loop
+    df_hist_clean = pd.read_csv(PATH_CLEAN)
+    df_hist_raw = pd.read_csv(PATH_RAW)
+
     while True:
         try:
-            # 1. BACA HISTORY
-            # [PENTING] Kita butuh minimal 200 data terakhir untuk EMA 200 yang akurat.
-            # Kita set 300 agar aman.
-            if os.path.exists(PATH_RAW) and os.path.exists(PATH_CLEAN):
-                df_hist_raw = pd.read_csv(PATH_RAW).tail(300) 
-                df_hist_clean = pd.read_csv(PATH_CLEAN).tail(300)
-                
-                last_time = pd.to_datetime(df_hist_raw.iloc[-1]['Open Time'])
-            else:
-                break
-
-            # 2. GET LIVE DATA
+            last_time = pd.to_datetime(df_hist_clean.iloc[-1]['Open Time'])
             klines = client.get_klines(symbol=SYMBOL, interval=INTERVAL, limit=2)
             closed_candle = klines[0]
             candle_time = pd.to_datetime(closed_candle[0], unit='ms')
 
-            # 3. PROSES DATA BARU
             if candle_time > last_time:
-                # --- SIAPKAN DATA ---
+                # A. RAW
                 row_raw = {
                     'Open Time': candle_time,
                     'Open': float(closed_candle[1]), 'High': float(closed_candle[2]),
                     'Low': float(closed_candle[3]), 'Close': float(closed_candle[4]),
                     'Volume': float(closed_candle[5])
                 }
+                df_hist_raw = pd.concat([df_hist_raw, pd.DataFrame([row_raw])], ignore_index=True)
                 
-                # --- JALUR 1: RAW ---
-                # Gabung -> Hitung Semua Indikator -> Simpan Baris Terakhir
-                df_concat_raw = pd.concat([df_hist_raw, pd.DataFrame([row_raw])], ignore_index=True)
-                # Fungsi ini otomatis menghitung RSI, EMA50, EMA200 dan menyimpan ke CSV
-                res_raw = apply_indicators_and_save(df_concat_raw, PATH_RAW, mode='a')
-                final_raw = res_raw.iloc[-1]
+                # PERBAIKAN: Gunakan fungsi yang sudah dibuat
+                res_raw_full = calculate_indicators_only(df_hist_raw) 
+                res_raw_full.tail(1).to_csv(PATH_RAW, mode='a', header=False, index=False)
 
-                # --- JALUR 2: CLEANED ---
-                # Bersihkan dulu baris barunya
-                row_clean = clean_one_candle(row_raw, df_hist_clean, log_filepath=PATH_LOG)
+                # B. CLEAN
+                row_clean = clean_one_candle(row_raw, df_hist_clean.tail(300), log_filepath=PATH_LOG)
+                df_hist_clean = pd.concat([df_hist_clean, pd.DataFrame([row_clean])], ignore_index=True)
                 
-                # Gabung -> Hitung Semua Indikator -> Simpan Baris Terakhir
-                df_concat_clean = pd.concat([df_hist_clean, pd.DataFrame([row_clean])], ignore_index=True)
-                res_clean = apply_indicators_and_save(df_concat_clean, PATH_CLEAN, mode='a')
-                final_clean = res_clean.iloc[-1]
+                # PERBAIKAN: Gunakan fungsi yang sudah dibuat
+                res_clean_full = calculate_indicators_only(df_hist_clean) 
+                res_clean_full.tail(1).to_csv(PATH_CLEAN, mode='a', header=False, index=False)
 
-                # --- DISPLAY ---
-                print(f"[{datetime.now().strftime('%H:%M')}] Saved.")
-                print(f" RAW | Close:{final_raw['Close']} | RSI:{final_raw['RSI']} | EMA50:{final_raw['EMA_50']} | EMA200:{final_raw['EMA_200']}")
-                print(f" CLN | Close:{final_clean['Close']} | RSI:{final_clean['RSI']} | EMA50:{final_clean['EMA_50']} | EMA200:{final_clean['EMA_200']}")
-                print("-" * 60)
+                # UPDATE PLOT
+                path_plot = os.path.join(kmeans_dir, "live_regime_plot.png")
+                last_cluster = update_streaming_plot(
+                    res_clean_full.tail(1000), 
+                    km_model, km_scaler, km_features, 
+                    save_path=path_plot
+                )
+
+                print(f"[{datetime.now().strftime('%H:%M')}] New Candle! Cluster: {last_cluster}")
                 
             else:
-                live = float(klines[1][4])
-                print(f"Waiting 5m Close... Live: {live:.2f}", end='\r')
+                # 1. Ambil harga live saat ini
+                live_price = float(klines[1][4])
+                live_volume = float(klines[1][5])
 
+                # 2. Buat dataframe sementara untuk menghitung indikator live
+                # Kita tempelkan harga live ke data history terakhir
+                df_live = df_hist_clean.tail(300).copy()
+                
+                # Buat baris sementara (unclosed candle)
+                new_row_live = df_live.iloc[-1].copy()
+                new_row_live['Close'] = live_price
+                new_row_live['Volume'] = live_volume
+                
+                # Gabungkan
+                df_live = pd.concat([df_live, pd.DataFrame([new_row_live])], ignore_index=True)
+                
+                # 3. Hitung Indikator untuk harga live
+                df_live_ready = calculate_indicators_only(df_live)
+                
+                # 4. Prediksi Cluster untuk baris paling terakhir (yang sedang jalan)
+                # Ambil fitur yang dibutuhkan saja
+                from models.kmeans import prepare_features # Pastikan fungsi ini bisa diakses
+                df_feat_live, feat_cols = prepare_features(df_live_ready.tail(5))
+                
+                if not df_feat_live.empty:
+                    scaled_live = km_scaler.transform(df_feat_live[feat_cols])
+                    live_cluster = km_model.predict(scaled_live)[-1]
+                else:
+                    live_cluster = "Calc..."
+
+                # 5. Tampilkan hasilnya (Ganti '?' dengan live_cluster)
+                print(f"Waiting {INTERVAL}... Live: {live_price:.2f} | Cluster Saat Ini: {live_cluster}    ", end='\r')
             time.sleep(2)
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"\nError di Main Loop: {e}") # Ini akan memberitahu jika ada error path atau fungsi
             time.sleep(5)
 
 if __name__ == "__main__":

@@ -32,23 +32,16 @@ def sb_fetch(table_name: str, select_columns: str = "*", filter_column: str = No
 
 def sb_insert(table_name: str, data: dict, upsert: bool = False) -> dict:
     """
-    Inserts a new row (or multiple rows) into a specified Supabase table.
-
-    Args:
-        table_name (str): The name of the table to insert into.
-        data (dict | list[dict]): The data to insert. Can be a single dictionary or a list of dictionaries.
-        upsert (bool, optional): If True, use UPSERT (insert or update if conflict) functionality. Defaults to False.
-
-    Returns:
-        dict: The response object from the Supabase client.
+    Memasukkan data baru. Jika upsert=True, akan mengupdate jika data sudah ada.
     """
     try:
-        query = supabase.table(table_name).insert(data)
-        
+        # LOGIKA PERBAIKAN:
+        # Jika upsert=True, langsung panggil fungsi .upsert()
+        # Jika upsert=False, panggil fungsi .insert()
         if upsert:
-            query = query.upsert(data) 
-
-        response = query.execute()
+            response = supabase.table(table_name).upsert(data).execute()
+        else:
+            response = supabase.table(table_name).insert(data).execute()
 
         return response.model_dump()
     
